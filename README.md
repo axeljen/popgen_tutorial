@@ -414,4 +414,222 @@ This creates `pca_angsd/pcangsd_pca_plot.png` and `pca_angsd/pcangsd_eigenval_ba
 
 ## Admixture analysis
 
-### 
+### With ADMIXTURE
+
+Admixture analysis is another very common method used in population genetics to infer individual ancestries and population structure. By modelling our SNP data as originating from *K* populations, we can get an idea about the number of distinct populations present in our dataset, and also whether individuals have mixed ancestry from multiple populations.
+
+First off, we will again be working on the SNP genotype calls, as if we were working with modern, high coverage genome data. For this purpose, we will use the software called admixture:
+
+```bash
+conda install -c bioconda admixture
+```
+
+ADMIXTURE uses the binary PLINK 1 format, consisting of `.bed`, `.bim` and
+`.fam` files. The PLINK PCA workflow above creates PLINK 2 files instead
+(`.pgen`, `.pvar` and `.psam`), so we first prepare the filtered input and
+convert it to the format expected by ADMIXTURE. Create a directory called
+`2.1_admixture` and run all commands in this section from that directory:
+
+```bash
+# install PLINK 2 if it is not already available
+conda install -c bioconda plink2
+
+# create and enter the ADMIXTURE directory
+mkdir -p 2.1_admixture
+cd 2.1_admixture
+
+# make a directory for storing output
+mkdir -p admix_stdfilt
+
+# prepare filtered PLINK 1 files from the filtered VCF
+bash prepare_admix_input.sh \
+    ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
+    admix_stdfilt/admix_stdfilt
+```
+
+The important input files are now:
+
+- `admix_stdfilt.bed`, the binary genotype data.
+- `admix_stdfilt.bim`, the variant information.
+- `admix_stdfilt.fam`, the sample order used by ADMIXTURE.
+
+The `.fam` file is important because the rows in the ADMIXTURE output are in
+this exact sample order. The `prepare_admix_input.sh` script applies the same
+basic filters as the PLINK PCA workflow: biallelic SNPs with standard bases,
+at most 10% missing data per individual and SNP, and a minor allele frequency
+of at least 5%.
+
+### Run ADMIXTURE for several values of *K*
+
+The value of *K* is the number of ancestral populations assumed by the model.
+Because the true value is not known in advance, it is common to run several
+values and compare their cross-validation errors. Let's run *K* from 2 to 6
+using 10-fold cross-validation:
+
+```bash
+for K in {2..6}; do
+    bash run_admixture.sh admix_stdfilt/admix_stdfilt.bed "$K"
+done
+```
+
+For each value of *K*, ADMIXTURE creates two files: 
+
+-- `admix_stdfilt.<K>.Q`, the ancestry proportions for each individual. Each row
+  is an individual and each column is one of the *K* inferred ancestral
+  components.
+-- `admix_stdfilt.<K>.P`, the estimated allele frequencies for the three
+  ancestral populations.
+
+In run_admixture.sh, we also capture the standard output, which contains the cv error, to a third file per K:
+
+-- `admix_stdfilt.<K>.log`, the log file containing the cross-validation error and other messages from ADMIXTURE.
+
+
+The run_admixture.sh script puts these in the directory where the input files are stored, so these files should be found in `admix_stdfilt/`.
+```
+ls admix_stdfilt
+```
+should give:
+
+    admix_stdfilt.2.P  admix_stdfilt.3.Q  admix_stdfilt.5.P  admix_stdfilt.6.Q    admix_stdfilt.bed.2.log  admix_stdfilt.bed.5.log  admix_stdfilt.fam
+    admix_stdfilt.2.Q  admix_stdfilt.4.P  admix_stdfilt.5.Q  admix_stdfilt.afreq  admix_stdfilt.bed.3.log  admix_stdfilt.bed.6.log  admix_stdfilt.log
+    admix_stdfilt.3.P  admix_stdfilt.4.Q  admix_stdfilt.6.P  admix_stdfilt.bed    admix_stdfilt.bed.4.log  admix_stdfilt.bim
+
+
+
+
+The cross-validation error indicates how well the model does in predicting our data under the assumed number of ancestral populations. The CV-error usually starts high and then steeply decreases as we reach the optimal K, which ideally reflects the true number of populations in our data set. So we want to look for the *difference* between successive CV-errors to identify the point where adding more ancestral populations no longer significantly improves the model fit, rather than looking at the absolute value.
+
+Extract the cross-validation errors from each K from the log files with:
+
+```bash
+for K in {2..6}; do
+    printf "K=%s " "$K"
+    grep -h "CV error" admix_stdfilt/admix_stdfilt.${K}.log
+done
+```
+
+- What K would you choose as the optimal number of ancestral populations based on the cross-validation errors?
+
+### Plot the ancestry proportions
+
+The standalone script `plot_admixture.R` plots a `.Q` file as stacked bars.
+Individuals are ordered by population using `../data/sample_popfile.tsv`,
+while their rows are first matched to the order in the `.fam` file. Install
+the plotting packages if necessary:
+
+```bash
+conda install -c conda-forge r-base r-tidyverse
+```
+
+Run this from the `2.1_admixture` directory, changing `K` to the value you
+want to plot:
+
+```bash
+for K in {2..6}; do
+Rscript plot_admixture.R \
+    admix_stdfilt/admix_stdfilt \
+    "$K" \
+    ../data/sample_popfile.tsv
+done
+```
+
+This creates one plot per K-value:
+
+### K=2
+<img src="./figures/admix_stdfilt.2.Q.png" alt="K=2" width="800">
+
+### K=3
+<img src="./figures/admix_stdfilt.3.Q.png" alt="K=3" width="800">
+
+### K=4
+<img src="./figures/admix_stdfilt.4.Q.png" alt="K=4" width="800">
+
+### K=5
+<img src="./figures/admix_stdfilt.5.Q.png" alt="K=5" width="800">
+
+### K=6
+<img src="./figures/admix_stdfilt.6.Q.png" alt="K=6" width="800">
+
+
+One thing that can be important to account for in population genetics analyses, which we have so far ignored, is linkage disequilibrium (LD). LD refers to the non-random association of alleles at different loci, and it can affect the inference of population structure because closely linked markers may not provide independent information and thus bias the results. To mitigate this, it is common practice to prune the genotypes before running admixture (and also PCA). If you have a large data set, you could actually remove SNPs that are statistically linked to each other using tools like PLINK with the `--indep-pairwise` option. This might be tricky in a data set like ours, where we have limited information to infer statistical linkage, and furthermore population structure in the dataset which can by itself bias LD estimates. 
+
+A more feasible approach for a data set like ours might be to simply thin the data set, such that we only include one SNP per fixed physical distance (e.g., one SNP every 50 kb). This reduces the impact of LD while retaining a representative set of markers for population structure analyses.
+
+PLINK 2 can do this directly with `--bp-space`. For example, to retain variants separated by at least 50,000 base pairs, add the following option to the `plink2` command in
+`prepare_admix_input.sh`:
+
+```bash
+    --bp-space 50000 \
+```
+
+The relevant part of the command would then look like this:
+
+```bash
+plink2 \
+    --vcf $vcf \
+    --allow-extra-chr \
+    --set-all-var-ids '@:#:$r:$a' \
+    --snps-only just-acgt \
+    --max-alleles 2 \
+    --mind $missing_ind \
+    --geno $missing_snp \
+    --maf $minor_allele_freq \
+    --bp-space 50000 \
+    --make-bed \
+    --rm-dup exclude-all \
+    --freq \
+    --out $outname
+```
+
+Let's try and see if it makes any difference.
+
+```bash
+# prepare filtered PLINK 1 files from the filtered VCF, with the --bp-space argument
+mkdir -p admix_bp-space_50k
+bash prepare_admix_input.sh \
+    ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
+    admix_bp-space_50k/admix_bp-space_50k
+
+for K in 2 3 4 5 6; do
+    bash run_admixture.sh \
+        admix_bp-space_50k/admix_bp-space_50k.bed \
+        "$K" \
+        ../data/sample_popfile.tsv
+done
+
+```
+
+You'll notice that this was a lot quicker, simply because we reduced the number of SNPs by thinning the dataset.
+
+Let's look at the CV error and admixture plots and see if anything changed:
+
+```bash
+for K in {2..6}; do
+    printf "K=%s " "$K"
+    grep -h "CV error" admix_bp-space_50k/admix_bp-space_50k.${K}.log
+done
+
+for K in {2..6}; do
+    Rscript plot_admixture.R \
+    admix_bp-space_50k/admix_bp-space_50k \
+    "$K" \
+    ../data/sample_popfile.tsv
+done
+```
+
+### K=2
+<img src="./figures/admix_bp-space_50k.2.Q.png" width="600">
+
+### K=3
+<img src="./figures/admix_bp-space_50k.3.Q.png" width="600">
+
+### K=4
+<img src="./figures/admix_bp-space_50k.4.Q.png" width="600">
+
+- Any important differences?
+
+- How would you say that the admixture results compare to the PCA?
+
+### with ngsadmix
+

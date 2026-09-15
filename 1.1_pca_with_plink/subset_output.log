@@ -1,0 +1,28 @@
+PLINK v2.0.0-a.6.9LM 64-bit Intel (29 Jan 2025)
+Options in effect:
+  --allow-extra-chr
+  --freq
+  --geno 0.10
+  --keep ../data/sample_list.txt
+  --maf 0.05
+  --make-pgen
+  --max-alleles 2
+  --mind 0.10
+  --out subset_output
+  --rm-dup exclude-all
+  --set-all-var-ids @:#:$r:$a
+  --snps-only just-acgt
+  --vcf ../data/01_vcf_files/input.vcf
+
+Hostname: arrhenius1.hpc.arrhenius.naiss.se
+Working directory: /home/axeljen/bioinfo_support/popgen_tutorial/1.1_pca_with_plink
+Start time: Tue Sep 15 14:08:56 2026
+
+Random number seed: 1789474136
+773197 MiB RAM detected, ~144022 available; reserving 143958 MiB for main
+workspace.
+Using up to 48 threads (change this with --threads).
+Error: Failed to open ../data/01_vcf_files/input.vcf : No such file or
+directory.
+
+End time: Tue Sep 15 14:08:56 2026

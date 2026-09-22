@@ -2,3 +2,7 @@
 data
 1.1_pca_with_plink/pca_AB_subset
 1.2_pca_with_angsd/pca_angsd
+2.1_admixture/admix_*
+2.2_ngsadmix/ngsadmix_K*
+2.2_ngsadmix/*.gz
+bamlist.txt

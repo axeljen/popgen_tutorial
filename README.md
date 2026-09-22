@@ -1,3 +1,6 @@
+# Popgen tutorial
+
+This tutorial will guide you through some of the most common population genetics analyses.
 
 # Popgen tutorial
 
@@ -556,11 +559,10 @@ One thing that can be important to account for in population genetics analyses, 
 
 A more feasible approach for a data set like ours might be to simply thin the data set, such that we only include one SNP per fixed physical distance (e.g., one SNP every 50 kb). This reduces the impact of LD while retaining a representative set of markers for population structure analyses.
 
-PLINK 2 can do this directly with `--bp-space`. For example, to retain variants separated by at least 50,000 base pairs, add the following option to the `plink2` command in
-`prepare_admix_input.sh`:
+PLINK 2 can do this directly with `--bp-space`. In a real dataset, you'd probably want to keep a space of >50-100 kb between genotype calls. In this very small simulated data set, however, we'll settle for 5000 bp so that we still retain some site sfor analyses. To thin the data set in this way, we use the `--bp-space` flag: 
 
 ```bash
-    --bp-space 50000 \
+    --bp-space 5000 \
 ```
 
 The relevant part of the command would then look like this:
@@ -575,7 +577,7 @@ plink2 \
     --mind $missing_ind \
     --geno $missing_snp \
     --maf $minor_allele_freq \
-    --bp-space 50000 \
+    --bp-space 5000 \
     --make-bed \
     --rm-dup exclude-all \
     --freq \
@@ -586,14 +588,14 @@ Let's try and see if it makes any difference.
 
 ```bash
 # prepare filtered PLINK 1 files from the filtered VCF, with the --bp-space argument
-mkdir -p admix_bp-space_50k
+mkdir -p admix_bp-space_5k
 bash prepare_admix_input.sh \
     ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
-    admix_bp-space_50k/admix_bp-space_50k
+    admix_bp-space_5k/admix_bp-space_5k
 
 for K in 2 3 4 5 6; do
     bash run_admixture.sh \
-        admix_bp-space_50k/admix_bp-space_50k.bed \
+        admix_bp-space_5k/admix_bp-space_5k.bed \
         "$K" \
         ../data/sample_popfile.tsv
 done
@@ -607,29 +609,134 @@ Let's look at the CV error and admixture plots and see if anything changed:
 ```bash
 for K in {2..6}; do
     printf "K=%s " "$K"
-    grep -h "CV error" admix_bp-space_50k/admix_bp-space_50k.${K}.log
+    grep -h "CV error" admix_bp-space_5k/admix_bp-space_5k.${K}.log
 done
 
 for K in {2..6}; do
     Rscript plot_admixture.R \
-    admix_bp-space_50k/admix_bp-space_50k \
+    admix_bp-space_5k/admix_bp-space_5k \
     "$K" \
     ../data/sample_popfile.tsv
 done
 ```
 
 ### K=2
-<img src="./figures/admix_bp-space_50k.2.Q.png" width="600">
+<img src="./figures/admix_bp-space_5k.2.Q.png" width="600">
 
 ### K=3
-<img src="./figures/admix_bp-space_50k.3.Q.png" width="600">
+<img src="./figures/admix_bp-space_5k.3.Q.png" width="600">
 
 ### K=4
-<img src="./figures/admix_bp-space_50k.4.Q.png" width="600">
+<img src="./figures/admix_bp-space_5k.4.Q.png" width="600">
 
-- Any important differences?
+- Any important differences with the thinning?
 
-- How would you say that the admixture results compare to the PCA?
+- Do the admixture results generally correspond to the PCA?
 
-### with ngsadmix
+### With NGSadmix
+
+As mentioned earlier, ADMIXTURE requires hard genotype calls, which can be unreliable for low
+coverage or degraded samples. NGSadmix instead works directly with genotype
+likelihoods calculated from the sequencing reads. We will therefore use the
+BAM files and ANGSD to create a Beagle-format likelihood file, then use that
+file as input for NGSadmix.
+
+Create a directory called `2.2_ngsadmix` and run all commands in this section
+from that directory. NGSAdmix is included in the angsd suite, so we don't need to install anything else.
+
+```bash
+mkdir -p ../2.2_ngsadmix
+cd ../2.2_ngsadmix
+
+```
+
+As in the ANGSD PCA section, use a BAM list with the same sample order as the
+population file. The order is preserved in the likelihood and NGSadmix
+outputs, so it is important that these files are created together:
+
+```bash
+> bamlist.txt
+while read sample pop; do
+    bam=$(find ../data/02_bamfiles -maxdepth 1 -name "$sample.dedup.bam")
+    echo "$bam" >> bamlist.txt
+done < ../data/sample_popfile.tsv
+
+wc -l bamlist.txt ../data/sample_popfile.tsv
+```
+
+Calculate genotype likelihoods with ANGSD. The SAMtools genotype-likelihood
+model (`-GL 1`) is written in Beagle format (`-doGlf 2`), which is accepted by
+NGSadmix. The mapping- and base-quality filters are the same as in the ANGSD
+PCA example:
+
+```bash
+angsd \
+    -b bamlist.txt \
+    -out angsd_ngsadmix \
+    -GL 1 \
+    -doGlf 2 \
+    -doMajorMinor 1 \
+    -doMaf 1 \
+    -minMapQ 30 \
+    -minQ 20 \
+    -SNP_pval 1e-6 \
+    -nThreads 4
+```
+
+This creates `angsd_ngsadmix.beagle.gz`. Just like for admixture, it's a good idea to prune the genotype likelihoods to get rid of strong linkage. To my knowledge, there's no widely adopted tool for thinning Beagle-format likelihood files, so I've included a very simple python script in the `bin` directory of this repo called `thin_beagle.py`. To only retain sites that are at least 5 kb apart, run:
+
+```bash
+# run the thinning script and pipe to gzip
+python ../bin/thin_beagle.py angsd_ngsadmix.beagle.gz 5000 | gzip > angsd_ngsadmix.thinned5kb.beagle.gz
+
+# check the difference in the number of sites
+zcat angsd_ngsadmix.beagle.gz | wc -l
+# 95301
+zcat angsd_ngsadmix.thinned5kb.beagle.gz | wc -l
+# 1965
+
+```
+
+Run NGSadmix for several values of
+*K*, the number of ancestral populations. 
+
+```bash
+for K in {2..6}; do
+    NGSadmix \
+        -likes angsd_ngsadmix.thinned5kb.beagle.gz \
+        -K "$K" \
+        -minMaf 0.05 \
+        -seed 42 \
+        -P 4 \
+        -o ngsadmix_K${K}
+done
+```
+
+The main output files for each value of *K* are:
+
+- `ngsadmix_K3.qopt`, the ancestry proportions for each individual.
+- `ngsadmix_K3.fopt.gz`, the estimated allele frequencies.
+- `ngsadmix_K3.log`, the run log, including the final likelihood.
+
+The rows in `.qopt` follow the order in `bamlist.txt`. Plot the ancestry
+proportions with the standalone script in this directory:
+
+```bash
+for K in {2..6}; do
+    Rscript plot_ngsadmix.R \
+        ngsadmix_K${K} \
+        "$K" \
+        bamlist.txt \
+        ../data/sample_popfile.tsv
+done
+```
+
+For example, the K=3 plot is written to
+`ngsadmix_K3.qopt.png`. 
+
+## Phylogenetic tree
+
+Another, very standard workflow in popgen and phylogenomics is to build a phylogenetic tree to investigate how sampled individuals are related to each other. One common approach is to generate trees for genomic regions (gene-trees), and then based on these gene-trees infere a species tree under the multi-species coalescent model. This takes into account the fact that different regions of the genome may have different evolutionary histories due to processes like incomplete lineage sorting.
+
+
 

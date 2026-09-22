@@ -23,5 +23,5 @@ plink2 \
     --make-bed \
     --rm-dup exclude-all \
     --freq \
-    --bp-space 50000 \
+    --bp-space 5000 \
     --out $outname

@@ -734,9 +734,6 @@ done
 For example, the K=3 plot is written to
 `ngsadmix_K3.qopt.png`. 
 
-## Phylogenetic tree
-
-Another, very standard workflow in popgen and phylogenomics is to build a phylogenetic tree to investigate how sampled individuals are related to each other. One common approach is to generate trees for genomic regions (gene-trees), and then based on these gene-trees infere a species tree under the multi-species coalescent model. This takes into account the fact that different regions of the genome may have different evolutionary histories due to processes like incomplete lineage sorting.
 
 
 

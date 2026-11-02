@@ -25,7 +25,7 @@ Then you can clone this repo if you want to to have this readme file directly av
     git clone https://github.com/axeljen/popgen_tutorial.git
 
     # download the archived data folder
-    curl -L https://osf.io/download/n4hwb/ -o data.tar
+    curl -L https://osf.io/download/rzmp9/ -o data.tar
     # and unpack it
     tar -xvf data.tar
 
@@ -42,21 +42,42 @@ Let's have a look at what's inside the data folder:
 Should look something like this:
 
     data
+    ├── map_and_call_out_downsample
+    │   ├── 00_input_data
+    │   ├── 01_reports
+    │   ├── 02_bamfiles
+    │   └── 03_genotypes
+    ├── map_and_call_out_downsample_rescale
+    │   ├── 00_input_data
+    │   ├── 01_reports
+    │   ├── 02_bamfiles
+    │   └── 03_genotypes
+    └── map_and_call_out_standard
+        ├── 00_input_data
+        ├── 01_reports
+        ├── 02_bamfiles
+        └── 03_genotypes
+
+This data dir contains three toy example outputs from the [mapping and variant calling pipeline](https://github.com/axeljen/map_and_call). We'll explore these, and the differences among them, a bit more below, but we'll start with just focussing on the map_and_call_out_standard directory. Let's have a look at its content:
+
+```bash
+    tree -d data/map_and_call_out_standard -L 2
+```
+    data/map_and_call_out_standard
     ├── 00_input_data
     │   └── 00_reference_genome
     ├── 01_reports
     │   ├── 00_fastqc
     │   ├── 01_qualimap
-    │   └── 02_variantstats
+    │   ├── 02_variantstats
+    │   └── 03_damage_profiles
     ├── 02_bamfiles
     │   ├── dedup_metrics
     │   └── mapping_depths
     └── 03_genotypes
         ├── 00_raw_variants
         ├── 01_filtered_variants
-        └── 02_maskfiles
-
-    14 directories
+        └── 02_maskfile
 
 Where:
 - `00_input_data/00_reference_genome` contains the reference genome for the analysis.
@@ -111,18 +132,18 @@ So let's find the relative path to the vcf file to use, and run the script:
 ```bash
     # So the vcf file that we'll use is located in the ../data/03_genotypes/01_filtered_variants directory
     # let's check the content of this dir
-    find ../data/03_genotypes/01_filtered_variants
+    find ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants
 
-        # ../data/03_genotypes/01_filtered_variants
-        # ../data/03_genotypes/01_filtered_variants/filtered_indels.vcf.gz
-        # ../data/03_genotypes/01_filtered_variants/filtered_indels.vcf.gz.csi
-        # ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz.csi
-        # ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz
-    # the last one, ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz is the one we want to use. Let's run the prepper script:
+        # ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants
+        # ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_indels.vcf.gz
+        # ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_indels.vcf.gz.csi
+        # ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz.csi
+        # ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz
+    # the last one, ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz is the one we want to use. Let's run the prepper script:
 
     # let's make a separate directory for this particular output, to keep it tidy
     mkdir -p pca_std_filt
-    bash prepare_plink_input.sh ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz pca_std_filt/pca_data_std_filt
+    bash prepare_plink_input.sh ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz pca_std_filt/pca_data_std_filt
 
 ```
 
@@ -160,10 +181,10 @@ ensures that only SNPs with standard nucleotide alleles (A, C, G, T) are conside
 restricts the analysis to biallelic variants only.
 
 `--mind $missing_ind`
-filters out individuals with a missing genotype rate higher than the specified threshold. the variable $missing_ind is defined at the beginning of the script and can be adjusted as needed. 10 % missing data per individual (as used here) is probably quite strict, could be relaxed depending on the dataset.
+filters out individuals with a missing genotype rate higher than the specified threshold. the variable $missing_ind is defined at the beginning of the script and can be adjusted as needed. 30 % missing data per individual (as used here) is quite lenient, and we're applying this here since we're analyzing a mixture between modern and historical samples, where the historical samples will have a lot more missing data than the moderns and a strictere filter would remove too many of them. In a real world situation, we would want to explore different sets of filters and ensure that missing data is handled appropriately.
 
 `--geno $missing_snp`
-filters out SNPs with a missing genotype rate higher than the specified threshold. The variable $missing_snp is defined at the beginning of the script and can be adjusted as needed. 10 % missing data per SNP (as used here) is probably a good starting point for many popgen purposes.
+filters out SNPs with a missing genotype rate higher than the specified threshold. The variable $missing_snp is defined at the beginning of the script and can be adjusted as needed. 20 % missing data per SNP (as used here) is, as above, quite lenient, and in reality we might want to try different thresholds to explore how it affects our results.
 
 `--maf $minor_allele_freq`
 filters out SNPs with a minor allele frequency below the specified threshold. The variable $minor_allele_freq is defined at the beginning of the script and can be adjusted as needed. A common choice is 0.05, also used here, meaning that SNPs with a minor allele frequency below 5% will be excluded.
@@ -234,8 +255,8 @@ The first plot is the actual PCA. Each point in the scatter plot represents an i
 To make things a little bit clearer, we can color the points in the PCA plot by the population they belong to. For this, we'll need a population assignment file, just listing one sample per line, and what population they were sampled from. Together with the data in this tutorial such a file was included, named sample_metadata.tsv. This file contains three columns, sequencing_id, original_id and population. Sequencing_id was only used for the mapping and variant calling step, so we can ignore that for now. Let's subset the sample_metadata.tsv file to only include the two last columns, remove the header line, and put that in a new file:
 
 ```bash
-# use cut to extract the second and third columns (original_id and population) and then tail to only start reading from the second line to remove the header line
-cut -f2,3 ../data/sample_metadata.tsv | tail -n +2 > ../data/sample_popfile.tsv
+# use cut to extract the first and second column of the sample metadata table, and only save one row per sample
+cut -f1,2 ../sample_metadata.tsv | uniq > ../data/sample_popfile.tsv
 ```
 
 The `plot_pca.R` script was written to optionally take a populatiion file like this as input, and color the points in the PCA plot according to the population each individual belongs to. So let's rerun with the population file:
@@ -248,20 +269,22 @@ Rscript plot_pca.R pca_std_filt/pca_data_std_filt_pca ../data/sample_popfile.tsv
 
 3) Did coloring the points by population help you to better distinguish the different clusters? Any new insights compared to the uncolored PCA plot?
 
-Clearly, population A and B end up more or less on top of each ither and any pattern there is difficult to discern. Let's make a PCA with only samples from population A and B:
+As you can see, PopE differentiates massively from the other populations. This is expected since popE was actually simulated as an outgroup, so it is indeed the most distant relative to all other populations. Let's consider PopA-PopD our focal populations, and make another pca only including these populations.
 
 ```bash
 
 # make a directory for storing files related to this subset analysis
-mkdir -p pca_AB_subset
+mkdir -p pca_ABCD_pops
 
 # extract a list of the samples to include
-cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" {print $1}' > pca_AB_subset/AB_samples_to_include.txt
+cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" || $2 == "popC" || $2 == "popD" {print $1}' > pca_ABCD_pops/ABCD_samples_to_include.txt
 
 # then we can simply pass this list to plink with the --keep flag, so let's copy the plink prepping script and add that argument
 cp prepare_plink_input.sh prepare_plink_input_subset.sh
 
 ```
+
+Awk is a powerful text/table processing tool that allows you to filter, manipulate, and extract specific columns from text files. In this case, we use it to filter rows in the sample_popfile.tsv file based on column 2 ($2), which contains the population information. The '||' operator represents a logical OR, so the condition '$2 == "popA" || $2 == "popB" || $2 == "popC" || $2 == "popD"' tells awk to only keep rows where **any** of these conditions are true, i.e., where the individual belongs to one of the specified populations. The '{print $1}' part tells awk to output only the first column, which contains the sample IDs, and redirect them to the file pca_ABCD_pops/ABCD_samples_to_include.txt.
 
 Edit the `prepare_plink_input_subset.sh` script to include the `--keep` flag with the list of samples to look something like:
 
@@ -276,8 +299,8 @@ Edit the `prepare_plink_input_subset.sh` script to include the `--keep` flag wit
     samples=$3
 
     ## filtering parameters
-    missing_ind=0.10 # minimum individual missingness threshold, i.e., individuals with more than 10% missing genotypes will be excluded
-    missing_snp=0.10 # minimum SNP missingness threshold, i.e., SNPs with more than 10% missing genotypes will be excluded
+    missing_ind=0.30 # minimum individual missingness threshold, i.e., individuals with more than 10% missing genotypes will be excluded
+    missing_snp=0.20 # minimum SNP missingness threshold, i.e., SNPs with more than 20% missing genotypes will be excluded
     minor_allele_freq=0.05 # minimum minor allele frequency threshold, i.e., SNPs with a minor allele frequency below 5% will be excluded
     # linkage_pruning_threshold=0.2 # threshold for linkage disequilibrium pruning, i.e., SNPs with an r^2 value above this threshold will be pruned
     plink2 \
@@ -298,26 +321,123 @@ Edit the `prepare_plink_input_subset.sh` script to include the `--keep` flag wit
 And then prepare a new set of pca input files:
 
 ```bash
-bash prepare_plink_input_subset.sh ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz pca_AB_subset/pca_data_AB_subset pca_AB_subset/AB_samples_to_include.txt
+bash prepare_plink_input_subset.sh ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz pca_ABCD_pops/pca_data_ABCD_pops pca_ABCD_pops/ABCD_samples_to_include.txt
 
 # run the pca
-bash plink_pca.sh pca_AB_subset/pca_data_AB_subset
+bash plink_pca.sh pca_ABCD_pops/pca_data_ABCD_pops
 
 # make a subset population map and plot
-cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" ' > pca_AB_subset/AB_sample_popfile.tsv
-Rscript plot_pca.R pca_AB_subset/pca_data_AB_subset_pca pca_AB_subset/AB_sample_popfile.tsv
+cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" || $2 == "popC" || $2 == "popD" ' > pca_ABCD_pops/ABCD_sample_popfile.tsv
+Rscript plot_pca.R pca_ABCD_pops/pca_data_ABCD_pops_pca pca_ABCD_pops/ABCD_sample_popfile.tsv
 
 ```
 This is what that plot looks like:
-<img src="./figures/pca_data_AB_subset_pca_pca_plot.png" alt="PCA plot for AB subset" width="600">
+<img src="./figures/pca_data_ABCD_pops_pca_pca_plot.png" alt="PCA plot for ABCD pops" width="600">
 
-Not super useful, perhaps, but at least it's clear that you can separate also these ones...
+Getting rid of the outgroup gives, at this level, three distinct clusters, where A and B sits more ore less indistinguishable from each other, while C and D form their own separate clusters. Let's make another one with only A and B, too:
+
+```bash
+
+mkdir -p pca_AB_pops
+
+cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" ' | cut -f 1 > pca_AB_pops/AB_samples_to_include.txt
+
+# we can use the same subset script as before to prepare the input files for just these two populations, just providing the appropriate sample list as argument
+bash prepare_plink_input_subset.sh ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz pca_AB_pops/pca_data_AB_pops pca_AB_pops/AB_samples_to_include.txt
+
+# run the PCA on the prepared input files
+bash plink_pca.sh pca_AB_pops/pca_data_AB_pops
+
+# create a new population assignment file again before plotting
+cat ../data/sample_popfile.tsv | awk ' $2 == "popA" || $2 == "popB" ' > pca_AB_pops/AB_sample_popfile.tsv
+
+Rscript plot_pca.R pca_AB_pops/pca_data_AB_pops_pca pca_AB_pops/AB_sample_popfile.tsv
+
+
+```
+
+<img src="./figures/pca_data_AB_subset_pca_pca_plot.png" width="600">
+
+With only these two populations included, you can see that there is indeed some separation also between popA and popB. We can also see that a few samples from each population are acting a little bit like outliers. Remember that this dataset contains (simulated) data from both modern and historical samples, which also differ substantially in mapping depth. Let's edit the R-script used for plotting to also accept a third column in the popfile that indicates whether a sample is modern or historical:
+
+`cp plot_pca.R plot_pca_with_datatype_indication.R`
+
+Change these lines inside the Rsript:
+
+    if (exists("pop")) {
+    colnames(pop) <- c("IID", "POP")
+    if (!setequal(pca_data$IID, pop$IID)) {
+        stop("Sample IDs in the PLINK eigenvector file and population file do not match.")
+    }
+    pca_data <- merge(pca_data, pop, by = c("IID")) %>%
+        # arrange by population and make factor
+        arrange(POP) %>%
+        mutate(POP = factor(POP, levels = unique(POP)))
+    }
+
+to: 
+
+    if (exists("pop")) {
+    colnames(pop) <- c("IID", "POP", "DATATYPE")
+    if (!setequal(pca_data$IID, pop$IID)) {
+        stop("Sample IDs in the PLINK eigenvector file and population file do not match.")
+    }
+    pca_data <- merge(pca_data, pop, by = c("IID")) %>%
+        # arrange by population and make factor
+        arrange(POP) %>%
+        mutate(POP = factor(POP, levels = unique(POP))) %>%
+        # arrange by datatype and make factor
+        arrange(DATATYPE) %>%
+       mutate(DATATYPE = factor(DATATYPE, levels = unique(DATATYPE)))
+    }
+
+And a bit further down, in the actual plotting command, change:
+
+    if (exists("popfile")) {
+    p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = POP)) +
+        geom_point(size = 3) +
+        labs(x = pc1_label, y = pc2_label, color = "Population") +
+        theme_minimal()
+    } else {
+        p <- ggplot(pca_data, aes(x = PC1, y = PC2)) +
+            geom_point(size = 3) +
+            labs(x = pc1_label, y = pc2_label) +
+            theme_minimal()
+    }
+
+To:
+
+    if (exists("popfile")) {
+    p <- ggplot(pca_data, aes(x = PC1, y = PC2, color = POP, shape = DATATYPE)) +
+        geom_point(size = 3) +
+        labs(x = pc1_label, y = pc2_label, color = "Population", shape = "Data Type") +
+        theme_minimal()
+    } else {
+        p <- ggplot(pca_data, aes(x = PC1, y = PC2)) +
+            geom_point(size = 3) +
+            labs(x = pc1_label, y = pc2_label) +
+            theme_minimal()
+    }
+
+
+Then we just include that additional column (column 3) from the popfile, and replot:
+
+```bash
+cat ../data/sample_metadata.tsv | awk ' $2 == "popA" || $2 == "popB" ' | cut -f1,2,3 > pca_AB_pops/sample_popfile_AB_with_datatype.tsv
+
+Rscript plot_pca_with_datatype_indication.R pca_AB_pops/pca_data_AB_pops_pca pca_AB_pops/sample_popfile_AB_with_datatype.tsv
+```
+<img src="./figures/pca_data_AB_pops_pca_pca_plot_with_datatype_indication.png" width="600">
+
+As you can see, the "outlier" samples are all historical ones (but not all historical ones are necessarily outliers). The other two output directories in the data dir `map_and_call_out_downsample` and `map_and_call_out_downsample_rescale` attempts to account for differences in sequencing coverage (first dir), and also control for historical DNA damage patterns (second dir). 
+
+**Bonus task**: Repeat the PCA constructions with plink using these two datasets where processing and variant calling attempts to account for differences in sequencing coverage and historical DNA damage patterns, and see if you find any differences.
 
 ### Using angsd
-
-Had we been working with low-coverage sequencing data, or historical samples where the DNA might have been fragmented etc., [angsd](http://www.popgen.dk/angsd/index.php/ANGSD) would have been a more appropriate tool for performing PCA and other population genetic analyses. Angsd was specifically developed to handle differences in sequencing coverage that could otherwise have large impacts on downstream analyses. Instead of relying on hard genotype calls, angsd works directly with genotype likelihoods, which we will retrieve from the BAM files.
+Although we have been using plink for PCA so far, and this has shown quite reasonable results in this case, angsd [angsd](http://www.popgen.dk/angsd/index.php/ANGSD) would arguably be a better approach for a dataset like ours, where we have a mixture of modern and historical samples with varying sequencing coverage. Angsd was specifically developed to handle differences in sequencing coverage that could otherwise have large impacts on downstream analyses. Instead of relying on hard genotype calls, angsd works directly with genotype likelihoods, which we will retrieve from the BAM files. Let's explore how to generate a PCA with angsd too, and see if we get any difference at all.
 
 To run a PCA using angsd, we need to install both the angsd suite, as well as pcangsd, which is a tool specifically designed for performing PCA on genotype likelihoods generated by angsd. We're also going to have to index the reference genome with samtools, so we'll go ahead and install that too.
+
 
 ```bash
 # install angsd
@@ -334,13 +454,13 @@ cd 1.2_pca_with_angsd
 
 Next, we'll convert the .cram files to .bam files. Angsd is supposed to be able to work directly on cramfiles too, but it tends not to work if the path to the reference genome used to generate the crams have changed since they were created (which obviously is the case here).
 
-We can use samtools for this conversion:
+We'll just work on the standard output from map_and_call in this case, and use samtools for this conversion:
 
 ```bash
 # loop through all the cram files, and convert them to bam files putting them next to the original CRAM files
-for cram in ../data/02_bamfiles/*.dedup.cram; do
-    bam="../data/02_bamfiles/$(basename "$cram" .dedup.cram).dedup.bam"
-    samtools view -b -o "$bam" -T ../data/00_input_data/00_reference_genome/reference_genome.fa.gz "$cram"
+for cram in ../data/map_and_call_out_standard/02_bamfiles/*.dedup.cram; do
+    bam="../data/map_and_call_out_standard/02_bamfiles/$(basename "$cram" .dedup.cram).dedup.bam"
+    samtools view -b -o "$bam" -T ../data/map_and_call_out_standard/00_input_data/00_reference_genome/reference_genome.fa.gz "$cram"
 done
 
 ```
@@ -355,7 +475,7 @@ mkdir -p pca_angsd
 # make a little loop to create a list of all the bamfiles, sorted as they are in the popfile
 >pca_angsd/bamlist.txt # creates an empty bamlist file
 while read sample pop; do
-    bam=$(find ../data/02_bamfiles -maxdepth 1 -name "$sample.dedup.bam")
+    bam=$(find ../data/map_and_call_out_standard/02_bamfiles -maxdepth 1 -name "$sample.dedup.bam")
     echo "$bam" >> pca_angsd/bamlist.txt
 done < ../data/sample_popfile.tsv
 
@@ -409,10 +529,11 @@ Rscript plot_pca_angsd.R \
 
 This creates `pca_angsd/pcangsd_pca_plot.png` and `pca_angsd/pcangsd_eigenval_bar_plot.png`.
 
-- Any differences?
+- Any differences in comparison to the Plink PCA plot?
 
-<img src="./figures/pca_data_std_filt_pca_pca_plot_popcolors.png" alt="PCA plot for all samples, plink" width="500">
-<img src="./figures/pcangsd_pca_plot.png" alt="PCA plot for all samples, pcangsd" width="500">
+### Plink // PCAngsd
+<img src="./figures/pca_data_std_filt_pca_pca_plot_popcolors.png" alt="PCA plot for all samples, plink" width="500" >
+<img src="./figures/pcangsd_pca_plot.png" alt="PCA plot for all samples, pcangsd" width="500" title="PCA plot for all samples, pcangsd">
 
 
 ## Admixture analysis
@@ -437,16 +558,15 @@ convert it to the format expected by ADMIXTURE. Create a directory called
 # install PLINK 2 if it is not already available
 conda install -c bioconda plink2
 
-# create and enter the ADMIXTURE directory
-mkdir -p 2.1_admixture
+# enter the ADMIXTURE directory
 cd 2.1_admixture
 
 # make a directory for storing output
 mkdir -p admix_stdfilt
 
-# prepare filtered PLINK 1 files from the filtered VCF
+# prepare filtered PLINK 1 files from the filtered VCF (similar filters etc. as used for the PCA)
 bash prepare_admix_input.sh \
-    ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
+    ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
     admix_stdfilt/admix_stdfilt
 ```
 
@@ -587,10 +707,13 @@ plink2 \
 Let's try and see if it makes any difference.
 
 ```bash
+cp prepare_admix_input.sh prepare_admix_input_bp-space_5k.sh
+# and insert the --bp-space 5000 argument into the new script
+
 # prepare filtered PLINK 1 files from the filtered VCF, with the --bp-space argument
 mkdir -p admix_bp-space_5k
-bash prepare_admix_input.sh \
-    ../data/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
+bash prepare_admix_input_bp-space_5k.sh \
+    ../data/map_and_call_out_standard/03_genotypes/01_filtered_variants/filtered_snps.vcf.gz \
     admix_bp-space_5k/admix_bp-space_5k
 
 for K in 2 3 4 5 6; do
@@ -629,6 +752,9 @@ done
 ### K=4
 <img src="./figures/admix_bp-space_5k.4.Q.png" width="600">
 
+### K=5
+<img src="./figures/admix_bp-space_5k.5.Q.png" width="600">
+
 - Any important differences with the thinning?
 
 - Do the admixture results generally correspond to the PCA?
@@ -657,7 +783,7 @@ outputs, so it is important that these files are created together:
 ```bash
 > bamlist.txt
 while read sample pop; do
-    bam=$(find ../data/02_bamfiles -maxdepth 1 -name "$sample.dedup.bam")
+    bam=$(find ../data/map_and_call_out_standard/02_bamfiles -maxdepth 1 -name "$sample.dedup.bam")
     echo "$bam" >> bamlist.txt
 done < ../data/sample_popfile.tsv
 
@@ -691,9 +817,9 @@ python ../bin/thin_beagle.py angsd_ngsadmix.beagle.gz 5000 | gzip > angsd_ngsadm
 
 # check the difference in the number of sites
 zcat angsd_ngsadmix.beagle.gz | wc -l
-# 95301
+# 151111
 zcat angsd_ngsadmix.thinned5kb.beagle.gz | wc -l
-# 1965
+# 1981
 
 ```
 
@@ -735,5 +861,14 @@ For example, the K=3 plot is written to
 `ngsadmix_K3.qopt.png`. 
 
 
+The plots should look something like this:
 
+<img src="./figures/ngsadmix_K2.qopt.png" width="600">
+<img src="./figures/ngsadmix_K3.qopt.png" width="600">
+<img src="./figures/ngsadmix_K4.qopt.png" width="600">
+<img src="./figures/ngsadmix_K5.qopt.png" width="600">
+<img src="./figures/ngsadmix_K6.qopt.png" width="600">
+
+- What conclusions would you draw from these admixture plots?
+- Are there any differences between angsd-based NGSadmix results and the PLINK/admixture results?
 

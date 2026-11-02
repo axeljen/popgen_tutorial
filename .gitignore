@@ -10,5 +10,4 @@ pca_*
 1.1_pca_with_plink/prepare_plink_input_subset.sh
 1.1_pca_with_plink/plot_pca_with_datatype_indication.R
 2.1_admixture/prepare_admix_input_bp-space_5k.sh
-1.1_pca_with_plink/prepare_plink_input_subset.sh
 2.2_ngsadmix/angsd_ngsadmix.arg

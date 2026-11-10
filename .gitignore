@@ -23,3 +23,6 @@ pca_*
 *.nex
 *.nwk
 3_phylogeny/samples.tsv
+
+# tutorial container image
+*.sif

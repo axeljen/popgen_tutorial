@@ -9,16 +9,12 @@ If you've run this previous tutorial, you are of course very welcome to directly
 
 ## Get started
 
-First, make a directory in which you want to run this tutorial and navigate into it:
-
-
-    mkdir popgen_tutorial
-    cd popgen_tutorial
-
-Then you can clone this repo if you want to to have this readme file directly available to follow along:
+First, navigate to the directory in which you want to run this tutorial, and clone this repo there. This creates a directory called `popgen_tutorial`, containing the scripts and this readme file. We'll then move into it and download the data, so that the data ends up inside the `popgen_tutorial` directory:
 
 ```bash
+    # clone the repo and move into it
     git clone https://github.com/axeljen/popgen_tutorial.git
+    cd popgen_tutorial
 
     # download the archived data folder
     curl -L https://osf.io/download/rzmp9/ -o data.tar
@@ -81,9 +77,47 @@ Where:
 - `02_bamfiles` contains the aligned BAM files along with deduplication metrics and mapping depths.
 - `03_genotypes` contains the raw and filtered variant calls as well as mask files, defining regions in the genome where reliable genotype calls can be made.
 
-If you don't have tree installed, you can install it, for example, with conda/mamba. 
+If you don't have tree installed, you can skip these commands, or use the version that comes with the tutorial software below.
 
-We'll use conda in this tutorial to handle all installations. If [conda](https://docs.conda.io/en/latest/miniconda.html) is not installed, please install it first. If you're on dardel, you can just load conda as a module `ml PDC miniconda3`. Once you're ready to go, let's create an environment that we can add packages to:
+## Software
+
+This tutorial uses quite a few programs (plink2, ADMIXTURE, ANGSD, PCAngsd, samtools, bedtools, IQ-TREE 2, newick-utils, ASTRAL-IV, R with tidyverse, and a few more). There are two ways to get them:
+
+- **Option A (recommended): the tutorial container.** A container is a single file that contains all the software, already installed, in exactly the versions used to make this tutorial. You download it once and are ready to go.
+- **Option B: conda.** You install the programs yourself into a conda environment as you go through the tutorial.
+
+### Option A: the tutorial container
+
+Containers are run with [Apptainer](https://apptainer.org/docs/user/latest/) (previously called Singularity), which is installed on most HPC clusters. On some clusters you need to load it as a module first; check with `module spider apptainer` (or `module spider singularity`).
+
+From the `popgen_tutorial` directory (the repo you cloned at the start), download the container:
+
+```bash
+    apptainer pull popgen_tutorial.sif docker://ghcr.io/axeljen/popgen_tutorial:1.1
+
+    # check that all the software works
+    apptainer exec popgen_tutorial.sif check_popgen_software
+```
+
+This creates the file `popgen_tutorial.sif` (about 700 MB). Apptainer also keeps a copy of the downloaded pieces in `~/.apptainer/cache`, which you can remove afterwards with `apptainer cache clean` if space in your home directory is tight.
+
+A container can only see the folders that are *bound* into it. By default these are your home directory, `/tmp` and the directory you're in. Since we'll work in subdirectories and read files from `../data`, let's bind the whole tutorial directory. Run this from the `popgen_tutorial` directory:
+
+```bash
+    export APPTAINER_BIND=$PWD
+```
+
+(Like all `export`s, this only lasts for your current terminal session, so you need to run it again if you log out and back in.) Now open a shell inside the container:
+
+```bash
+    apptainer shell popgen_tutorial.sif
+```
+
+Your prompt changes to `Apptainer>`, and all programs are now available. Everything in the rest of the tutorial can be run as written from this shell, **except that you skip all the `conda install` lines**, since everything is already installed. Type `exit` to leave the container again.
+
+### Option B: conda
+
+If [conda](https://docs.conda.io/en/latest/miniconda.html) is not installed, please install it first. If you're on dardel, you can just load conda as a module `ml PDC miniconda3`. Once you're ready to go, let's create an environment that we can add packages to:
 
 ```bash
     # let's create an environment
@@ -97,6 +131,27 @@ We'll use conda in this tutorial to handle all installations. If [conda](https:/
     # if you're using the dardel module, you'll have to run source instead:
     source activate popgen_tutorial_env
     
+```
+
+We'll then install the programs into this environment as we need them, with the `conda install` commands throughout the tutorial. Alternatively, you can create an environment with everything at once, in the same versions as in the container, from the file in the `container` directory of this repo:
+
+```bash
+    conda env create -f container/environment.yml
+```
+
+### A note on running things as slurm jobs
+
+The data set in this tutorial is small, so all commands below can be run directly in the terminal, and that's how the tutorial is written. With real data, however, many of these steps (genotype likelihoods with ANGSD, ADMIXTURE/NGSadmix runs, consensus sequences and window trees, etc.) can take hours or days. Those steps should be submitted as **slurm jobs**, so that they run on the compute nodes of the cluster rather than on the login node, and often many at the same time.
+
+To make this easier, the [`slurmscripts`](slurmscripts/) directory in the root of this repo contains a ready-made slurm template for each of the heavier steps. The [README in that directory](slurmscripts/README.md) explains which template belongs to which part of the tutorial, how to fill in your account and partition, how to make sure the job finds the software (in the container or in your conda environment), how array jobs work, and how to check on your jobs. It's a good idea to try at least one of them while going through the tutorial. Submit jobs from a normal terminal, not from inside `apptainer shell` (the cluster's `sbatch` isn't available in the container), e.g.:
+
+```bash
+# if you use the container: tell the job where it is (see slurmscripts/README.md)
+export POPGEN_SIF=/path/to/popgen_tutorial.sif
+
+cd 2.1_admixture
+mkdir -p logs
+sbatch ../slurmscripts/2.1_admixture_array.sh   # runs all values of K in parallel
 ```
 
 ## Principal components analysis (PCA)

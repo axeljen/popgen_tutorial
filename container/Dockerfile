@@ -10,9 +10,11 @@ LABEL org.opencontainers.image.description="Software for the popgen tutorial (pl
 # fastaparser has no releases, so we pin an exact commit
 ARG FASTAPARSER_COMMIT=7e5b5e962e9bb62362556435a4f955ea2eafce5f
 
-# install the conda environment into the base environment of the image
-COPY --chown=$MAMBA_USER:$MAMBA_USER container/environment.yml /tmp/environment.yml
-RUN micromamba install -y -n base -f /tmp/environment.yml && \
+# install the conda environment into the base environment of the image.
+# (environment.yml is kept in /opt for reference; don't put files in /tmp,
+# Apptainer mounts the host's /tmp there and files in the image can break that)
+COPY container/environment.yml /opt/popgen_tutorial/environment.yml
+RUN micromamba install -y -n base -f /opt/popgen_tutorial/environment.yml && \
     micromamba clean --all --yes
 
 # install fastaparser (its dependencies are already installed from environment.yml)

@@ -2,10 +2,6 @@
 
 This tutorial will guide you through some of the most common population genetics analyses.
 
-# Popgen tutorial
-
-This tutorial will guide you through some of the most common population genetics analyses.
-
 The data we will use in this tutorial was simulated based on five fictional populations, which has been processed to generate alignments and genotypes, using the map_and_call pipeline. To follow along from the very beginning, see the [map and call pipeline tutorial](https://github.com/axeljen/mapcall_tutorial).
 
 If you've run this previous tutorial, you are of course very welcome to directly use the output from that tutorial. Otherwise, we'll download the output data here, so also fine to just start from here.
@@ -77,7 +73,7 @@ This data dir contains three toy example outputs from the [mapping and variant c
     └── 03_genotypes
         ├── 00_raw_variants
         ├── 01_filtered_variants
-        └── 02_maskfile
+        └── 02_maskfiles
 
 Where:
 - `00_input_data/00_reference_genome` contains the reference genome for the analysis.
@@ -614,9 +610,10 @@ ls admix_stdfilt
 ```
 should give:
 
-    admix_stdfilt.2.P  admix_stdfilt.3.Q  admix_stdfilt.5.P  admix_stdfilt.6.Q    admix_stdfilt.bed.2.log  admix_stdfilt.bed.5.log  admix_stdfilt.fam
-    admix_stdfilt.2.Q  admix_stdfilt.4.P  admix_stdfilt.5.Q  admix_stdfilt.afreq  admix_stdfilt.bed.3.log  admix_stdfilt.bed.6.log  admix_stdfilt.log
-    admix_stdfilt.3.P  admix_stdfilt.4.Q  admix_stdfilt.6.P  admix_stdfilt.bed    admix_stdfilt.bed.4.log  admix_stdfilt.bim
+    admix_stdfilt.2.log  admix_stdfilt.3.P    admix_stdfilt.4.Q    admix_stdfilt.6.log  admix_stdfilt.afreq  admix_stdfilt.log
+    admix_stdfilt.2.P    admix_stdfilt.3.Q    admix_stdfilt.5.log  admix_stdfilt.6.P    admix_stdfilt.bed
+    admix_stdfilt.2.Q    admix_stdfilt.4.log  admix_stdfilt.5.P    admix_stdfilt.6.Q    admix_stdfilt.bim
+    admix_stdfilt.3.log  admix_stdfilt.4.P    admix_stdfilt.5.Q    admix_stdfilt.fam
 
 
 
@@ -719,8 +716,7 @@ bash prepare_admix_input_bp-space_5k.sh \
 for K in 2 3 4 5 6; do
     bash run_admixture.sh \
         admix_bp-space_5k/admix_bp-space_5k.bed \
-        "$K" \
-        ../data/sample_popfile.tsv
+        "$K"
 done
 
 ```

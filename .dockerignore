@@ -1,0 +1,3 @@
+# Only the container/ directory is needed to build the image
+*
+!container/

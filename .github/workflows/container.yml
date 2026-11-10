@@ -1,0 +1,44 @@
+# Build the tutorial container, test it, and push it to the GitHub Container
+# Registry (ghcr.io).
+#
+# Runs when you push a tag that starts with "container-v", e.g.:
+#   git tag container-v1.0
+#   git push origin container-v1.0
+# which publishes ghcr.io/axeljen/popgen_tutorial:1.0
+#
+# It can also be started by hand from the "Actions" tab on GitHub
+# ("Run workflow"); that builds and tests the image without pushing it.
+name: container
+
+on:
+  push:
+    tags:
+      - "container-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/axeljen/popgen_tutorial
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t popgen_tutorial:test -f container/Dockerfile .
+
+      - name: Check that all software works
+        run: docker run --rm popgen_tutorial:test check_popgen_software
+
+      - name: Push image
+        if: startsWith(github.ref, 'refs/tags/container-v')
+        run: |
+          version="${GITHUB_REF_NAME#container-v}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag popgen_tutorial:test "$IMAGE:$version"
+          docker push "$IMAGE:$version"

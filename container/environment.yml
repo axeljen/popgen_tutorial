@@ -1,0 +1,32 @@
+# Software for the popgen tutorial.
+# Used to build the container, but can also be used directly with conda:
+#   conda env create -f container/environment.yml
+name: popgen_tutorial_env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # PCA and admixture
+  - plink2=2.0.0a.6.9
+  - admixture=1.3.0
+  - angsd=0.940          # also provides NGSadmix
+  - pcangsd=1.36.4
+  # BAM/FASTA/BED handling
+  - samtools=1.24
+  - htslib=1.24
+  - bedtools=2.31.1
+  # phylogenetics
+  - iqtree=2.4.0
+  - newick_utils=1.6
+  - aster=1.25           # provides astral4
+  # plotting
+  - r-base=4.5.3
+  - r-tidyverse=2.0.0
+  # python, plus the dependencies of fastaparser (installed with pip in the Dockerfile)
+  - python=3.13
+  - pip
+  - click
+  - pysam
+  - biopython
+  # small utilities used in the README
+  - tree

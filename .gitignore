@@ -12,3 +12,14 @@ pca_*
 2.1_admixture/prepare_admix_input_bp-space_5k.sh
 2.2_ngsadmix/angsd_ngsadmix.arg
 2.2_ngsadmix/angsd_ngsadmix.arg
+3_phylogeny/consensus
+3_phylogeny/consensus/
+*/logs/
+3_phylogeny/masks/
+3_phylogeny/trees/
+3_phylogeny/window*
+3_phylogeny/reference/
+*.fa
+*.nex
+*.nwk
+3_phylogeny/samples.tsv

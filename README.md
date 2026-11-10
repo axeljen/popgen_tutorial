@@ -868,3 +868,200 @@ The plots should look something like this:
 - What conclusions would you draw from these admixture plots?
 - Are there any differences between angsd-based NGSadmix results and the PLINK/admixture results?
 
+## Genome-wide phylogeny
+
+PCA and admixture help us explore population structure. Next, let's estimate a tree describing the relationships among our populations. Different parts of a genome can have different evolutionary histories, so rather than assuming that the entire genome follows one tree, we'll first build a tree for each of many small genomic windows. We'll then use ASTRAL-IV to summarize these window trees under the multispecies coalescent model.
+
+We'll use windows of 10 kb, starting every 500 kb along each chromosome: bases 1-10,000, 500,001-510,000, and so on, 1,000,001-1,010,000, 1,500,001-1,510,000, etc. We make short windows to capture the local genealogy for this specific locus, ideally, each locus should have little to no recombination within it and represent a single history. Dispersing them by 500kb reduces the risk of interdependence among windows – an assumption of generating species trees this way is that each tree is independent.
+
+### Set up the analysis
+
+From the repository root, let's move in to the `3_phylogeny` directory. If you're still in `2.2_ngsadmix`, first run `cd ..`.
+
+```bash
+
+cd 3_phylogeny
+
+# Install the software we need for this part of the tutorial
+conda install -c conda-forge -c bioconda bedtools iqtree=2 newick_utils aster
+
+# Install fastaparser from GitHub, a small custom Python package for handling and filtering FASTA files
+python -m pip install 'git+https://github.com/axeljen/fastaparser.git'
+
+```
+
+Here, [fastaparser](https://github.com/axeljen/fastaparser) handles alignment filtering, IQ-TREE 2 estimates the window trees, newick-utils edits those trees, and the ASTER package provides `astral4`. Check `iqtree2 --version` and `astral4 -h` before continuing. 
+
+We'll use the BAM files created in the ANGSD PCA section, rather than reading the CRAM files directly. If you haven't converted them yet, use the conversion commands in that section first. Keep using the **same reference** that was used for mapping. 
+
+
+### Generate bed file with windows
+
+First, we'll use bedtools to create a table of the genomic regions in which we'll ultimately generate the locus trees, by feeding the reference fasta index and a window and step size:
+
+```bash
+
+reference_index=../data/map_and_call_out_standard/00_input_data/00_reference_genome/reference_genome.fa.gz.fai
+bedtools makewindows -g "$reference_index" -w 10000 -s 500000 > windows.bed
+
+```
+Inspect the windows.bed file:
+
+```bash
+head windows.bed
+```
+
+    chr1    0       10000
+    chr1    500000  510000
+    chr2    0       10000
+    chr2    500000  510000
+    chr3    0       10000
+    chr3    500000  510000
+    chr4    0       10000
+    chr4    500000  510000
+    chr5    0       10000
+    chr5    500000  510000
+
+Each row represents one region in the reference genome in which we will:
+1) extract a consensus sequence and combine into a multi-fasta alignment including all samples in the data set
+2) perform a phylogenetic analysis on the extracted sequences with iqtree to build a phylogenetic tree
+3) use newick utils to collapse nodes in the resulting window tree that are poorly supported by the data
+
+Finally, we will concatenated the trees from all windows into a single file, and summarize these into a genome-wide species tree using astral.
+
+### Make masked sequences with ANGSD
+
+To go from the mapped BAM format to sequences resembling a consensus sequence for each sample, we'll use ANGSD's `-doFasta 1` option to randomly sample one observed base at each position, separately for every individual. This produces a pseudo-haploid sequence, by randomly choosing one allele at each site. This is a fairly robust way to generate consensus sequences from a set of samples that may vary in sequencing coverage.
+
+We'll generate and mask a genome-wide sequence once per sample, then extract all the windows from those indexed FASTAs. 
+
+We will use the mappability mask files to ensure that we only keep positions in the bam file that we are confident about. The masks need particular care. These are **positive masks**: the BED intervals describe positions we trust and want to keep.
+
+`bedtools maskfasta` masks the intervals it receives, so passing the positive mask directly would do the opposite of what we want! Instead, we'll first calculate its **complement**, meaning all positions outside the trusted intervals, and replace those bases with `N`.
+
+The dofasta_and_mask.sh script will run a few different steps for each sample. This script takes a bam file and a mask file as input arguments, and will produce a masked, whole-genome fasta consensus sequence.
+
+To run for a single sample, one would run:
+`bash dofasta_and_mask.sh <sample.bam> <sample.mask.bed>`
+
+But we'll write a little loop to iterate over all bam files:
+```bash
+for bam in ../data/map_and_call_out_standard/02_bamfiles/*.dedup.bam; 
+do
+    # get the sample name from the BAM file so we can find the corresponding mask (it's the snp_mask.bed.gz file we should use here, contains all mappable regions with indels excluded)
+    sample=$(basename "$bam" .dedup.bam)
+    mask=../data/map_and_call_out_standard/03_genotypes/02_maskfiles/"$sample"_snp_mask.bed.gz
+    bash dofasta_and_mask.sh "$bam" "$mask"
+done
+
+```
+
+This creates one masked consensus sequence per sample, `consensus/<sample>.masked.fa`, together with its index (`.fai`).
+
+When doing this on real data, if you're on a cluster, this could (should) be parallelized by submitting each sample as a separate slurm job, rather than running all samples sequentially on a single node. The template `slurmscripts/3_dofasta_and_mask_array.sh` does exactly this as an array job, with one task per sample. See [slurmscripts/README.md](slurmscripts/README.md) for how to submit it.
+
+Once we have consensus sequences for all samples, we can use samtools to extract the sequences for each window in `windows.bed`. Since these FASTAs come from alignments to the same reference genome, the sequences share coordinates and need no additional alignment.
+
+```bash
+mkdir -p windows_raw windows_filtered logs
+
+# Process each window in windows.bed
+while IFS=$'\t' read -r chrom start end; do
+    region="${chrom}:$((start + 1))-${end}"
+    > "windows_raw/${chrom}_${start}_${end}.fa"
+    for consensus in consensus/*.masked.fa; do
+        sample=$(basename "$consensus" .masked.fa)
+        samtools faidx "$consensus" "$region" | sed "s/^>.*$/>$sample/" \
+         >> "windows_raw/${chrom}_${start}_${end}.fa"
+    done
+done < windows.bed
+```
+
+Each alignment in `windows_raw` now contains one 10 kb sequence per individual. Because all reads were mapped to the same reference, the extracted sequences already share genomic coordinates; we don't need a separate multiple-sequence alignment program here. This assumes the reference mapping is appropriate and does not resolve structural differences or mapping bias.
+
+```bash
+for alignment in windows_raw/*.fa; do
+    window=$(basename "$alignment" .fa)
+    if fastaparser filter \
+        -i "$alignment" \
+        --max-missing-seq 0.30 \
+        --max-missing-site 0.20 \
+        -o "windows_filtered/${window}.fa" 2> "logs/${window}.filter.log"; then
+        :
+    elif grep -Eq 'No sequences remain after filtering|No sites remain after filtering' "logs/${window}.filter.log"; then
+        rm -f "windows_filtered/${window}.fa"
+        echo "Discarded empty alignment: $window"
+    else
+        # an unexpected error: print the log and stop the loop
+        cat "logs/${window}.filter.log" >&2
+        break
+    fi
+done
+```
+
+Fastaparser first removes sequences with **more than 30% missing data**. It then removes columns with **more than 20% missing data among the remaining sequences**. It treats `N`, `X`, `?`, and gaps as missing. A sample can be retained in one window but excluded in another. ASTRAL can use trees with missing samples, but check the IQ-TREE reports for windows with too few informative sites to estimate a reliable tree.
+
+
+### Estimate a tree for each window
+
+Let's run IQ-TREE 2 separately on each alignment that passed filtering:
+
+```bash
+mkdir -p trees
+for alignment in windows_filtered/*.fa; do
+    window=$(basename "$alignment" .fa)
+    iqtree2 \
+        -s "$alignment" \
+        -m MFP \
+        -B 1000 \
+        -T 1 \
+        --prefix "trees/$window" || { echo "IQ-TREE failed for $window" >&2; break; }
+done
+```
+
+`-s` gives the alignment. `-m MFP` runs ModelFinder to choose a nucleotide substitution model for that window. `-B 1000` calculates support using 1,000 **ultrafast bootstrap** replicates, and `-T 1` uses one thread. These are not 1,000 conventional bootstrap replicates. The `.iqtree` report includes the selected model and diagnostics; inspect it for warnings, including windows with too little variation. The `.treefile` contains the maximum-likelihood tree with bootstrap support labels. These are the trees we'll filter and use for ASTRAL downstream.
+
+Running IQTree sequentially for each winodw one after another like this will take some time. If you want to speed it up, and especially if running on a large data-set, I strongly recommend that you submit one slurm job per window instead of running it sequentially like this. The template `slurmscripts/3_iqtree_array.sh` does this as an array job, with one task per window (see [slurmscripts/README.md](slurmscripts/README.md)).
+
+Next, collapse internal branches with support **below 20%** using newick-utils. This is somewhat of an arbitrary cutoff, but it's good to do some filtering to remove very weakly supported splits before combining the trees with ASTRAL. 
+
+```bash
+for tree in trees/*.treefile; do
+    nw_ed "$tree" 'i & b < 20' o > "${tree%.treefile}.collapsed.nwk"
+done
+
+cat trees/*.collapsed.nwk > window_trees.nwk
+# check how many window trees we have
+wc -l window_trees.nwk
+```
+
+In `nw_ed`, `i` selects internal nodes, `b` is the numerical bootstrap label, and `o` collapses the selected branch. A branch labelled 20 is retained; one labelled 19 is collapsed. Collapsing produces a **polytomy**, an unresolved split with more than two descendants, rather than asking ASTRAL to treat an extremely uncertain split as established. ASTRAL accepts these unresolved trees and trees with missing samples.
+
+### Combine the window trees with ASTRAL-IV
+
+Different window trees can disagree because of estimation error, but also because gene copies can trace their ancestry differently from the populations containing them. This is called **incomplete lineage sorting**. ASTRAL looks for a population or species tree that best agrees with the quartet relationships across the input trees under a coalescent model. Here, a quartet is simply a set of four tips and their relationships.
+
+A simple astral4 command looks like this:
+
+```bash
+astral4 \
+    -o astral_tree.nwk \
+    window_trees.nwk
+
+cat astral_tree.nwk
+```
+
+The result, `astral_tree.nwk`, is a Newick-format tree whose tips are the individual samples. ASTRAL-IV reports branch lengths in **substitutions per site** using integrated CASTLES-II, and its default branch supports are **local posterior probabilities**.
+
+Open the tree in a viewer such as [FigTree](https://github.com/rambaut/figtree) or [treeviewer](https://treeviewer.org/) to explore its topology and support.
+
+**Hint** Root the tree using the outgroup (popE samples) to be able to interpret the relationships among the other populations correctly.
+
+- Does the population tree agree with the broad structure in the PCA and admixture analyses?
+- Are any relationships poorly supported, and do the window trees tend to disagree about those relationships?
+- Could the admixture we explored earlier help explain disagreement between genomic regions?
+
+<img src="./figures/astral_tree.png" width="600">
+
+- Can you think of any reason for some individuals having much longer terminal branches than the others? (hint: think about the potential impact of data type/sequencing coverage)
+- Bonus task: see if generating the trees from downsampled and/or rescaled bam files makes any difference.
